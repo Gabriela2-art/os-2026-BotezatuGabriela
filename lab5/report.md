@@ -194,10 +194,11 @@ exec 3<&- ; df -h ~
 
 ## Conclusion
 
-Lab 5 demonstrated that Linux file names are directory entries referencing inodes, not the files' underlying identities. Hard links share an inode, while symbolic links contain a path that may become invalid. Logical file length differs from allocated disk space; permissions and special bits control access; and Linux presents storage, process and kernel information using a unified filesystem interface. The results were obtained with Bash commands and are documented with screenshots and additional explanations in the Word report.
+In this laboratory work, I explored the main concepts of the Linux file system through practical experiments. The exercises helped me understand how files and directories are organized, how inodes store file information, and how hard links and symbolic links behave when files are removed.
 
-## Submitted materials
+I also learned how Linux permissions work using commands such as chmod and umask. The experiments demonstrated how access rights control files and directories, while special bits such as setuid and sticky bit provide additional security.
 
-- `Lab5_BotezatuGabriela_FAF243.docx` — complete formal report and screenshots.
-- `report.md` — supplementary command and observation notes (this file).
-- `notes.txt`, `one.txt` — experiment artifacts, if retained in the repository.
+Furthermore, I examined disk partitions, mounted file systems, and system information available through /proc. The optional exercises showed how file types can be identified by their content and why deleting an open file does not immediately free its disk space.
+
+Overall, this laboratory improved my practical understanding of Linux file systems, permissions, and storage management. It also strengthened my ability to use terminal commands, interpret their outputs, and explain how the operating system manages files internally.
+
