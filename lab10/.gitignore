@@ -1,9 +1,0 @@
-*.o
-*.d
-*.asm
-*.sym
-*.img
-*.out
-kernel/kernel
-user/_*
-user/usys.S
