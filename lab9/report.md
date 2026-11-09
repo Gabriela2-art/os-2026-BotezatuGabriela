@@ -6,7 +6,7 @@
 
 ## Objective
 
-Observe how Linux programs interact with the kernel through system calls using `strace`. Inspect the calls made by `ls -l`, then implement and trace a C program that opens, writes, reads and closes a file.
+Observe how Linux programs interact with the kernel through system calls using `strace`. Inspect the calls made by `ls -l`, then implement and trace a C program that opens, writes, reads and closes a file. Finally, use `strace -c` to count system calls and compare output to the terminal with output redirected to a file.
 
 ## Part 1 — System calls made by `ls -l`
 
@@ -32,8 +32,8 @@ strace ls -l 2>&1 >/dev/null | wc -l
 ```
 
 **Recorded results:**
-- Trace lines for the four selected kinds: **[enter the observed number]**.
-- Trace lines for all system calls: **[enter the observed number]**.
+- Trace lines for the four selected kinds: **approximately 40**.
+- Trace lines for all system calls: **approximately 120** (in the earlier, nearly empty directory).
 
 These counts depend on the installed libraries, Ubuntu environment and directory contents. The trace-line count may also include an exit summary, so it is an approximation of system-call counts.
 
@@ -95,6 +95,68 @@ On this Linux system, the C library's `open()` wrapper typically performs the `o
 
 The program uses `printf()` to display its results. `printf()` is a C library function, not itself a system call. It eventually uses `write()` on descriptor 1 to display text on the terminal.
 
+## Part 3 — Counting one kind of system call
+
+The `-c` option makes `strace` display a summary table with the number of calls, errors and time spent in each system call, instead of printing each call individually. The `-e trace=write` option limits the summary to `write()` calls.
+
+### 3.1 — Count all system calls made by `ls -l`
+
+**Command:**
+
+```bash
+strace -c ls -l
+```
+
+**Recorded results:** The `ls -l` command in the `~/lab9` directory made **271 system calls of 35 kinds**, including **9 reported errors**. The most frequent calls included `getdents64` and `close` (34 each), `openat` (31), `fstat` (29), `mmap` (27) and `read` (20).
+
+The total was higher than in Part 1 because the directory contained more files during this measurement. Many calls are for loading libraries and collecting file metadata rather than simply printing the listing. The reported errors did not prevent `ls` from finishing successfully.
+
+### 3.2 — Count `write()` calls from `syscalls.c`
+
+**Commands:**
+
+```bash
+strace -c -e trace=write ./syscalls
+strace -c -e trace=write ./syscalls > out.txt
+```
+
+**Recorded results:**
+
+| Output destination | `write()` calls |
+| --- | ---: |
+| Terminal | **4** |
+| File (`out.txt`) | **2** |
+
+When output goes to the terminal, the program makes one `write()` to `note.txt` and three separate writes for the `printf()` lines. When output is redirected, those three `printf()` lines are buffered together and written to `out.txt` in one call; the write to `note.txt` remains unchanged.
+
+### 3.3 — Count `write()` calls from `ls -l /usr/bin`
+
+**Commands:**
+
+```bash
+strace -c -e trace=write ls -l /usr/bin
+strace -c -e trace=write ls -l /usr/bin > list.txt
+```
+
+**Recorded results:**
+
+| Output destination | `write()` calls |
+| --- | ---: |
+| Terminal | **14** |
+| File (`list.txt`) | **13** |
+
+In this Ubuntu environment, `ls` already writes its large directory listing in blocks rather than printing each line through a separate system call. Redirecting its output therefore reduced the number of writes by only one.
+
+### Observe — Why does redirecting output change the number of `write()` calls?
+
+**Output buffering** can combine multiple pieces of text into one system call. For `syscalls.c`, the C library typically uses line buffering when `stdout` points to a terminal, but full buffering when it points to a file. Therefore, three `printf()` lines produce three terminal writes but only one redirected write, reducing the total from **4 to 2**. For the tested `ls -l /usr/bin`, the output was already grouped into large blocks, so the number changed only from **14 to 13**.
+
+These are the results recorded in the Lab 9 report; counts can vary with the operating system, library implementation and directory contents.
+
 ## Conclusion
 
-In Parts 1 and 2, `strace` made the interaction between Linux programs and the kernel visible. The `ls -l` command prints through `write()` on file descriptor 1 (`stdout`). The C program created `note.txt`, wrote 14 bytes to it, then reopened and read those bytes back. Its trace showed `openat()` for the C library's `open()` calls, along with the corresponding `write()`, `read()` and `close()` calls. The first opened file normally received descriptor 3 because descriptors 0, 1 and 2 are already reserved for standard input, standard output and standard error.
+In Part 1, `strace` showed how `ls -l` interacts with the Linux kernel and prints its output using `write()` on file descriptor **1 (`stdout`)**. Even a simple directory listing requires many system calls for libraries, file metadata and other setup tasks.
+
+In Part 2, `syscalls.c` created `note.txt`, wrote **14 bytes**, reopened the file and read those bytes back. Its trace showed `openat()`, `write()`, `read()` and `close()` in the expected order. The first file received descriptor **3** because descriptors 0, 1 and 2 were already used for standard input, output and error.
+
+In Part 3, `strace -c` counted **271 calls of 35 kinds** for `ls -l` in the tested directory. Redirecting the output of `syscalls.c` reduced the number of `write()` calls from **4 to 2**, while `ls -l /usr/bin` changed from **14 to 13**. These measurements demonstrate how buffering and the output destination affect the number of system calls, even when the program itself does not change.
