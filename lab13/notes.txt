@@ -1,0 +1,12 @@
+Lab 13 - Observe Answers
+
+1. Without the lock, the letters mix because each line requires 31 separate write() system calls: 30 for the letters and one for the newline. The two processes can execute these calls concurrently, causing their output to interleave.
+
+2. The two lines that make the whole line a critical section are:
+   if (uselock) sem_down(3);
+   if (uselock) sem_up(3);
+   They ensure that only one process prints a complete line at a time.
+
+3. A process can wake up and still find the semaphore value equal to 0 because wakeup() wakes all waiting processes, but only one can acquire an available unit. Another process may consume it first. Therefore, while is necessary to check the condition again.
+
+4. If a process slept while holding the spinlock, another process could not acquire that lock to execute sem_up(). The waiting process would never be awakened, causing a deadlock. The spinlock must be released before sleep().

@@ -1,0 +1,137 @@
+diff --git a/Makefile b/Makefile
+index af1e7a5..8c73f88 100644
+--- a/Makefile
++++ b/Makefile
+@@ -18,6 +18,7 @@ OBJS = \
+   $K/trap.o \
+   $K/syscall.o \
+   $K/sysproc.o \
++  $K/sem.o \
+   $K/bio.o \
+   $K/fs.o \
+   $K/log.o \
+@@ -146,10 +147,22 @@ UPROGS=\
+ 	$U/_grind\
+ 	$U/_wc\
+ 	$U/_zombie\
++        $U/_semtest\
++        $U/_mix\
++        $U/_trace\
+ 	$U/_logstress\
+ 	$U/_forphan\
+ 	$U/_dorphan\
+ 	$U/_sync\
++        $U/_sleep\
++        $U/_args\
++        $U/_mystat\
++        $U/_find\
++        $U/_run\
++        $U/_pingpong\
++        $U/_primes\
++        $U/_trace\
++        $U/_sysinfo\
+ 
+ fs.img: mkfs/mkfs README $(UPROGS)
+ 	mkfs/mkfs fs.img README $(UPROGS)
+diff --git a/kernel/syscall.c b/kernel/syscall.c
+index 1800f20..768c972 100644
+--- a/kernel/syscall.c
++++ b/kernel/syscall.c
+@@ -103,7 +103,11 @@ extern uint64 sys_link(void);
+ extern uint64 sys_mkdir(void);
+ extern uint64 sys_close(void);
+ extern uint64 sys_sync(void);
+-
++extern uint64 sys_sem_init(void);
++extern uint64 sys_sem_down(void);
++extern uint64 sys_sem_up(void);
++extern uint64 sys_trace(void);
++extern uint64 sys_sysinfo(void);
+ // An array mapping syscall numbers from syscall.h
+ // to the function that handles the system call.
+ static uint64 (*syscalls[])(void) = {
+@@ -130,9 +134,26 @@ static uint64 (*syscalls[])(void) = {
+   [SYS_mkdir]   = sys_mkdir,
+   [SYS_close]   = sys_close,
+   [SYS_sync]    = sys_sync,
++  [SYS_sem_init] = sys_sem_init,
++  [SYS_sem_down] = sys_sem_down,
++  [SYS_sem_up] = sys_sem_up,
++  [SYS_trace] = sys_trace,
++[SYS_sysinfo] = sys_sysinfo,
+   // clang-format on
+ };
+ 
++static char *syscallnames[] = {
++  [SYS_fork] "fork",   [SYS_exit] "exit",     [SYS_wait] "wait",
++  [SYS_pipe] "pipe",   [SYS_read] "read",     [SYS_kill] "kill",
++  [SYS_exec] "exec",   [SYS_fstat] "fstat",   [SYS_chdir] "chdir",
++  [SYS_dup] "dup",     [SYS_getpid] "getpid", [SYS_sbrk] "sbrk",
++  [SYS_pause] "pause", [SYS_uptime] "uptime", [SYS_open] "open",
++  [SYS_write] "write", [SYS_mknod] "mknod",   [SYS_unlink] "unlink",
++  [SYS_link] "link",   [SYS_mkdir] "mkdir",   [SYS_close] "close",
++  [SYS_sync] "sync", [SYS_trace] "trace",
++[SYS_sysinfo] "sysinfo",
++};
++
+ void
+ syscall(void)
+ {
+@@ -141,9 +162,13 @@ syscall(void)
+ 
+   num = p->trapframe->a7;
+   if (num > 0 && num < NELEM(syscalls) && syscalls[num]) {
+-    // Use num to lookup the system call function for num, call it,
++    // Use num to lookup the system call function for num,
+     // and store its return value in p->trapframe->a0
+     p->trapframe->a0 = syscalls[num]();
++
++    if ((p->trace_mask >> num) & 1)
++      printk("%d: syscall %s -> %ld\n",
++             p->pid, syscallnames[num], p->trapframe->a0);
+   } else {
+     printk("%d %s: unknown sys call %d\n", p->pid, p->name, num);
+     p->trapframe->a0 = -1;
+diff --git a/kernel/syscall.h b/kernel/syscall.h
+index 5a4a39f..adc76a7 100644
+--- a/kernel/syscall.h
++++ b/kernel/syscall.h
+@@ -21,3 +21,8 @@
+ #define SYS_mkdir  20
+ #define SYS_close  21
+ #define SYS_sync   22
++#define SYS_sem_init 24
++#define SYS_sem_down 25
++#define SYS_sem_up 26
++#define SYS_trace  23
++#define SYS_sysinfo 27
+diff --git a/user/user.h b/user/user.h
+index 29aad59..28d44f7 100644
+--- a/user/user.h
++++ b/user/user.h
+@@ -25,6 +25,12 @@ char *sys_sbrk(int, int);
+ int pause(int);
+ int uptime(void);
+ int sync(void);
++int sem_init(int, int);
++int sem_down(int);
++int sem_up(int);
++int trace(int);
++struct sysinfo;
++int sysinfo(struct sysinfo *);
+ 
+ // ulib.c
+ int stat(const char *, struct stat *);
+diff --git a/user/usys.pl b/user/usys.pl
+index 4d054e8..9efdd8a 100755
+--- a/user/usys.pl
++++ b/user/usys.pl
+@@ -43,3 +43,8 @@ entry("sbrk");
+ entry("pause");
+ entry("uptime");
+ entry("sync");
++entry("sem_init");
++entry("sem_down");
++entry("sem_up");
++entry("trace");
++entry("sysinfo");
