@@ -1,12 +1,52 @@
-Lab 13 - Observe Answers
+Laboratory Work No. 13: Semaphores in Your Own Kernel (xv6)
+Student: Botezatu Gabriela
+Group: FAF-243
 
-1. Without the lock, the letters mix because each line requires 31 separate write() system calls: 30 for the letters and one for the newline. The two processes can execute these calls concurrently, causing their output to interleave.
+Part 3 - Observe Answers
 
-2. The two lines that make the whole line a critical section are:
-   if (uselock) sem_down(3);
-   if (uselock) sem_up(3);
-   They ensure that only one process prints a complete line at a time.
+1. Without the lock, why do the letters mix? (How many system calls does one line cost?)
 
-3. A process can wake up and still find the semaphore value equal to 0 because wakeup() wakes all waiting processes, but only one can acquire an available unit. Another process may consume it first. Therefore, while is necessary to check the condition again.
+Each line contains 30 characters and one newline character, requiring exactly 31 separate write() system calls. Since each process prints 5 lines, each process executes 155 write() calls.
 
-4. If a process slept while holding the spinlock, another process could not acquire that lock to execute sem_up(). The waiting process would never be awakened, causing a deadlock. The spinlock must be released before sleep().
+The parent and child processes can run concurrently because xv6 uses 3 CPUs. Without a semaphore protecting the entire line, the processes can execute their write() calls in an interleaved order. As a result, characters from one process can appear between characters printed by the other process, causing the letters A and b to mix.
+
+
+2. With the lock every line is whole. Which two lines of mix.c make one line a critical section?
+
+The two statements that protect the printing loop in user/mix.c are:
+
+if (uselock)
+    sem_down(3);
+
+and
+
+if (uselock)
+    sem_up(3);
+
+Semaphore 3 is initialized to 1, allowing only one process to enter the critical section at a time. sem_down(3) acquires the semaphore before printing starts, while sem_up(3) releases it after the complete line, including the newline character, has been printed.
+
+This ensures that each line is printed without interference from the other process.
+
+
+3. In sem_down the test is "while (s->value == 0)", not "if". Why can a process wake up and still find 0?
+
+The wakeup(s) function wakes all processes waiting on semaphore s. However, when sem_up() increases the semaphore value, it adds only one available unit.
+
+If multiple processes wake up, the first process that acquires the spinlock can decrement the value back to 0. The remaining processes may therefore find that the semaphore is still unavailable.
+
+Using while ensures that every awakened process checks the semaphore value again before continuing. If the value is 0, the process returns to sleep.
+
+Using if instead could allow a process to continue without an available unit, potentially making the semaphore value negative and breaking synchronization.
+
+
+4. sem_down calls release(&s->lock) BEFORE sleep(). What would go wrong if it slept holding the spinlock?
+
+A process must release the spinlock before sleeping because other processes need to acquire that lock to modify the semaphore value.
+
+If a process entered sleep() while holding s->lock, another process attempting to execute sem_up() would be unable to acquire the spinlock. Consequently, it could not increase the semaphore value or call wakeup(s).
+
+The sleeping process would wait for a signal that could never be delivered, resulting in a deadlock.
+
+Additionally, sleeping while holding a spinlock violates xv6 kernel synchronization rules, since spinlocks disable interrupts on the local CPU and must only protect short critical sections.
+
+The implementation prevents this problem by calling sleep_prepare(s), releasing the spinlock with release(&s->lock), and then calling sleep(). This allows other processes to update the semaphore and wake the waiting process safely.
